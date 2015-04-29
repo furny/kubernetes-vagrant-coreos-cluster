@@ -1,0 +1,7 @@
+ - name: default
+   #Attention: "." will point to the root of the dev-setup repository because that is where the Vagrantfile is located and "vagrant up" is executed
+   source: .
+   destination: /home/core/dev-setup
+   nfs: true
+   mount_options: 'nolock,vers=3,udp,noatime'
+   disabled: false
