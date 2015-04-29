@@ -1,3 +1,4 @@
-.vagrant
-.dockercfg
-temp/*
+/.vagrant
+/.dockercfg
+/temp
+!/temp/.gitkeep
