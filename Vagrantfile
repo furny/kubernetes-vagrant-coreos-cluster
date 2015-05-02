@@ -1,3 +1,6 @@
+# We have to trick vagrant into thinking it's running
+# from ./dev-setup instead of ./dev-setup/tools/kubernetes-vagrant-cluster
+# so it mounts ./dev-setup into /vagrant. Mounting arbitrary folders apparently doesn't work.
 
 coreOsClusterPath = File.join(File.dirname(__FILE__), "tools/kubernetes-vagrant-coreos-cluster")
 
@@ -60,7 +63,7 @@ NODE_YAML = File.join(coreOsClusterPath, "node.yaml")
 USE_DOCKERCFG = ENV['USE_DOCKERCFG'] || false
 DOCKERCFG = File.expand_path(ENV['DOCKERCFG'] || "~/.dockercfg")
 
-KUBERNETES_VERSION = ENV['KUBERNETES_VERSION'] || '0.15.0'
+KUBERNETES_VERSION = ENV['KUBERNETES_VERSION'] || '0.16.0'
 
 tempCloudProvider = (ENV['CLOUD_PROVIDER'].to_s.downcase)
 case tempCloudProvider
@@ -193,11 +196,16 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
         end
         kHost.trigger.after [:up] do
           info "Waiting for Kubernetes master to become ready..."
-          system <<-EOT.prepend("\n\n") + "\n"
-            until curl -o /dev/null -sIf http://#{MASTER_IP}:8080; do \
-              sleep 1;
-            done;
-          EOT
+          j, uri, res = 0, URI("http://#{MASTER_IP}:8080"), nil
+          loop do
+            j += 1
+            begin
+              res = Net::HTTP.get_response(uri)
+            rescue
+              sleep 10
+            end
+            break if res.is_a? Net::HTTPSuccess or j >= 50
+          end
           info "Configuring Kubernetes cluster DNS..."
           system <<-EOT.prepend("\n\n") + "\n"
             cd #{coreOsClusterPath}/dns
@@ -206,20 +214,45 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
                 -e "s|__DNS_UPSTREAM_SERVERS__|#{DNS_UPSTREAM_SERVERS}|g" \
               dns-controller.yaml.tmpl > #{coreOsClusterPath}/temp/dns-controller.yaml
             cd ..
-            kubectl create -f #{coreOsClusterPath}/temp/dns-controller.yaml
-            kubectl create -f #{coreOsClusterPath}/dns/dns-service.yaml
           EOT
+
+          res, uri.path = nil, '/api/v1beta1/replicationControllers/kube-dns'
+          begin
+            res = Net::HTTP.get_response(uri)
+          rescue
+          end
+          if not res.is_a? Net::HTTPSuccess
+            system "kubectl create -f #{coreOsClusterPath}/temp/dns-controller.yaml"
+          end
+
+          res, uri.path = nil, '/api/v1beta1/services/kube-dns'
+          begin
+            res = Net::HTTP.get_response(uri)
+          rescue
+          end
+          if not res.is_a? Net::HTTPSuccess
+            system "kubectl create -f #{coreOsClusterPath}/dns/dns-service.yaml"
+          end
+
         end
       end
 
       if vmName == "node-%02d" % (i - 1)
         kHost.trigger.after [:up] do
           info "Waiting for Kubernetes minion [node-%02d" % (i - 1) + "] to become ready..."
-          system <<-EOT.prepend("\n\n") + "\n"
-            until curl -o /dev/null -sIf http://#{BASE_IP_ADDR}.#{i+100}:10250; do \
-              sleep 1;
-            done;
-          EOT
+          j, uri, hasResponse = 0, URI("http://#{BASE_IP_ADDR}.#{i+100}:10250"), false
+          loop do
+            j += 1
+            begin
+              res = Net::HTTP.get_response(uri)
+              hasResponse = true
+            rescue Net::HTTPBadResponse
+              hasResponse = true
+            rescue
+              sleep 10
+            end
+            break if hasResponse or j >= 50
+          end
         end
       end
 
