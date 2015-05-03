@@ -1,3 +1,6 @@
+# We have to trick vagrant into thinking it's running
+# from ./dev-setup instead of ./dev-setup/tools/kubernetes-vagrant-cluster
+# so it mounts ./dev-setup into /vagrant. Mounting arbitrary folders apparently doesn't work.
 
 coreOsClusterPath = File.join(File.dirname(__FILE__), "tools/kubernetes-vagrant-coreos-cluster")
 
