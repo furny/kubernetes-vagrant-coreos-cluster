@@ -1,7 +1,3 @@
-
-coreOsClusterPath = File.join(File.dirname(__FILE__), "tools/kubernetes-vagrant-coreos-cluster")
-
-
 # -*- mode: ruby -*-
 # vi: set ft=ruby :
 
@@ -54,8 +50,8 @@ end
 VAGRANTFILE_API_VERSION = "2"
 Vagrant.require_version ">= 1.6.0"
 
-MASTER_YAML = File.join(coreOsClusterPath, "master.yaml")
-NODE_YAML = File.join(coreOsClusterPath, "node.yaml")
+MASTER_YAML = File.join(File.dirname(__FILE__), "master.yaml")
+NODE_YAML = File.join(File.dirname(__FILE__), "node.yaml")
 
 USE_DOCKERCFG = ENV['USE_DOCKERCFG'] || false
 DOCKERCFG = File.expand_path(ENV['DOCKERCFG'] || "~/.dockercfg")
@@ -95,8 +91,8 @@ NUM_INSTANCES = ENV['NUM_INSTANCES'] || 2
 MASTER_MEM = ENV['MASTER_MEM'] || 512
 MASTER_CPUS = ENV['MASTER_CPUS'] || 1
 
-NODE_MEM= ENV['NODE_MEM'] || 2048
-NODE_CPUS = ENV['NODE_CPUS'] || 2
+NODE_MEM= ENV['NODE_MEM'] || 1024
+NODE_CPUS = ENV['NODE_CPUS'] || 1
 
 BASE_IP_ADDR = ENV['BASE_IP_ADDR'] || "172.17.8"
 
@@ -117,7 +113,7 @@ GUI = (ENV['GUI'].to_s.downcase == 'true')
 end
 
 # Read YAML file with mountpoint details
-MOUNT_POINTS = YAML::load_file(File.join(coreOsClusterPath, "synced_folders.yaml"))
+MOUNT_POINTS = YAML::load_file('synced_folders.yaml')
 
 Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   # always use Vagrants' insecure key
@@ -180,11 +176,11 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
           system <<-EOT.prepend("\n\n") + "\n"
              sed -e "s|__KUBERNETES_VERSION__|#{KUBERNETES_VERSION}|g" \
                  -e "s|__MASTER_IP__|#{MASTER_IP}|g" \
-             #{coreOsClusterPath}/setup.tmpl > #{coreOsClusterPath}/temp/setup
-             chmod +x #{coreOsClusterPath}/temp/setup
+             setup.tmpl > temp/setup
+             chmod +x temp/setup
           EOT
           info "Making sure 'kubectl' matches the Kubernetes version we just bootstrapped..."
-          system File.join(coreOsClusterPath, "./temp/setup") + " install"
+          system "./temp/setup install"
         end
         kHost.trigger.after [:up, :resume] do
           info "Sanitizing stuff..."
@@ -205,7 +201,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
           end
           info "Configuring Kubernetes cluster DNS..."
           system <<-EOT.prepend("\n\n") + "\n"
-            cd #{coreOsClusterPath}/dns
+            cd dns
             sed -e "s|__MASTER_IP__|#{MASTER_IP}|g" \
                 -e "s|__DNS_DOMAIN__|#{DNS_DOMAIN}|g" \
                 -e "s|__DNS_UPSTREAM_SERVERS__|#{DNS_UPSTREAM_SERVERS}|g" \
@@ -219,7 +215,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
           rescue
           end
           if not res.is_a? Net::HTTPSuccess
-            system "kubectl create -f #{coreOsClusterPath}/temp/dns-controller.yaml"
+            system "kubectl create -f temp/dns-controller.yaml"
           end
 
           res, uri.path = nil, '/api/v1beta1/services/kube-dns'
@@ -228,7 +224,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
           rescue
           end
           if not res.is_a? Net::HTTPSuccess
-            system "kubectl create -f #{coreOsClusterPath}/dns/dns-service.yaml"
+            system "kubectl create -f dns/dns-service.yaml"
           end
 
         end
@@ -253,15 +249,14 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
         end
       end
 
-      kHost
       kHost.trigger.before [:destroy] do
         system <<-EOT.prepend("\n\n") + "\n"
-          rm -f #{coreOsClusterPath}/temp/*
+          rm -f temp/*
         EOT
       end
 
       if SERIAL_LOGGING
-        logdir = File.join(coreOsClusterPath, "log")
+        logdir = File.join(File.dirname(__FILE__), "log")
         FileUtils.mkdir_p(logdir)
 
         serialFile = File.join(logdir, "#{vmName}-serial.txt")
